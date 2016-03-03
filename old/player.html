@@ -1,0 +1,308 @@
+<html>
+<head>
+    <title>Player</title>
+    <meta charset="utf-16" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script type="text/javascript">
+//
+
+function $(q) { return document.querySelector(q); }
+function $$(q) { return document.querySelectorAll(q); }
+function $s(o, p) { for (var k in p) o[k] = p[k]; }
+
+function resize() {
+    if (window.innerWidth > window.innerHeight) {
+        // Horizontal
+        var w = window.innerWidth / 2;
+        var h = window.innerHeight;
+        var s = 10;
+        var b = 2;
+        var size = {
+            "width": (w - 3.5 * s - 2 * b) + "px",
+            "height": (h - 4 * s - 2 * b) + "px",
+            "margin-top": s + "px",
+            "margin-bottom": s + "px",
+            "margin-left": s + "px",
+            "margin-right": "0px",
+            "padding": s + "px",
+            "border": b + "px dashed black",
+            "border-radius": "2px"
+        };
+        $s($("#controls").style, size);
+        $s($("#playlist").style, size);
+    }
+    else {
+        // Vertical
+        var w = window.innerWidth;
+        var h = window.innerHeight / 2;
+        var s = 10;
+        var b = 2;
+        var size = {
+            "width": (w - 4 * s - 2 * b) + "px",
+            "height": (h - 3.5 * s - 2 * b) + "px",
+            "margin-top": s + "px",
+            "margin-bottom": "0px",
+            "margin-left": s + "px",
+            "margin-right": s + "px",
+            "padding": s + "px",
+            "border": b + "px dashed black",
+            "border-radius": "2px"
+        };
+        $s($("#controls").style, size);
+        $s($("#playlist").style, size);
+    }
+}
+
+function gather(path, acc, completion) {
+    if (path.length == 0) {
+        completion(acc);
+    }
+    else {
+        var next = path.pop();
+        if (next.endsWith(".m3u") || next.endsWith(".m3u8")) {
+            // Playlist
+            var req = new XMLHttpRequest();
+            req.addEventListener("load", function() {
+                var data = req.responseText.split("\n");
+                for (var i = 0; i < data.length; i++) {
+                    var entry = next + "/" + data[i].trim();
+                    // TODO ends with media
+                    if (entry.endsWith(".mp3") || entry.endsWith(".mp4")) {
+                        acc.push(entry);
+                    }
+                }
+                gather(path, acc, completion);
+            });
+            req.open("GET", next);
+            req.send();
+        }
+        else {
+            // Directory listing
+            var req = new XMLHttpRequest();
+            req.addEventListener("load", function() {
+                try {
+                    var data = JSON.parse(req.responseText);
+                    for (var i = 0; i < data.files.length; i++) {
+                        var entry = next + "/" + data.files[i];
+                        // TODO ends with media
+                        if (entry.endsWith(".mp3") || entry.endsWith(".mp4")) {
+                            acc.push(entry);
+                        }
+                    }
+                    for (var i = 0; i < data.folders.length; i++) {
+                        var entry = next + "/" + data.folders[i];
+                        path.push(entry);
+                    }
+                }
+                catch (e) {
+                }
+                gather(path, acc, completion);
+            });
+            req.open("GET", next);
+            req.send();
+        }
+    }
+}
+
+function load(input) {
+    gather(input.split(";"), [], function(songs) {
+        // Done
+        $("#info").innerHTML = "Loaded " + songs.length;
+        
+        // Populate playlist
+        while ($("#playlist").firstChild) {
+            $("#playlist").removeChild($("#playlist").firstChild);
+        }
+        for (var i = 0; i < songs.length; i++) {
+            var loc = songs[i];
+            var entry = document.createElement("div");
+            entry.className = "entry";
+            entry.setAttribute("data-loc", loc);
+            entry.addEventListener("click", function(e) {
+                if (e.target.className.indexOf("selected") == -1) {
+                    play_this(e.target);
+                }
+            });
+            entry.innerHTML = loc.substring(loc.lastIndexOf("/") + 1);
+            $("#playlist").appendChild(entry);
+        }
+        
+        $("#playlist").firstChild.className = "entry selected";
+        play_this($("#playlist").firstChild);
+    });
+}
+
+function play_this(entry, start) {
+    var current = $("#playlist .selected");
+    current.className = "entry";
+    entry.className = "entry selected";
+    
+    var loc = entry.getAttribute("data-loc");
+    $("#player").src = loc;
+    if (start) {
+        $("#player").play();
+    }
+}
+
+function play_prev() {
+    var current = $("#playlist .selected");
+    if (current.previousSibling) {
+        current.className = "entry";
+        current.previousSibling.className = "entry selected";
+        play_this(current.previousSibling);
+    }
+}
+
+function play_play() {
+    $("#player").play();
+}
+
+function play_pause() {
+    $("#player").pause();
+}
+
+function play_next() {
+    var current = $("#playlist .selected");
+    if (current.nextSibling) {
+        current.className = "entry";
+        current.nextSibling.className = "entry selected";
+        play_this(current.nextSibling);
+    }
+}
+
+window.addEventListener("resize", resize);
+
+window.addEventListener("load", function() {
+    // Resize elements
+    resize();
+    
+    // Add listeners
+    $("#path").addEventListener("input", function(e) {
+        e.target.className = "text changed";
+    });
+    $("#path").addEventListener("keydown", function(e) {
+        if (e.keyCode == 13) {
+            e.target.className = "text updated";
+            load($("#path").value);
+        }
+    });
+    
+    $("#prev").addEventListener("click", play_prev);
+    $("#play").addEventListener("click", play_play);
+    $("#pause").addEventListener("click", play_pause);
+    $("#next").addEventListener("click", play_next);
+    $("#player").addEventListener("error", function() {
+        setTimeout(play_next, 1000);
+    });
+    $("#player").addEventListener("ended", function() {
+        setTimeout(play_next, 1000);
+    });
+    $("#player").volume = 0.5;
+});
+
+//
+    </script>
+    <style type="text/css">
+/**/
+
+body {
+    padding: 0px;
+    margin: 0px;
+    overflow: hidden;
+}
+
+#controls {
+    user-select: none;
+    -ms-user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    
+    font-size: 2em;
+    text-align: center;
+}
+
+.panel {
+    float: left;
+    overflow: auto;
+    
+    border: 2px dashed black;
+    
+    font-family: Ubuntu;
+}
+
+.text {
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-top: 0.2em;
+    margin-bottom: 0.2em;
+    
+    font-size: 1em;
+    width: 95%;
+}
+
+.text.changed {
+    box-shadow: 0px 0px 5px 2px #F00;
+}
+
+.text.updated {
+    box-shadow: 0px 0px 5px 2px #0C0;
+}
+
+.button {
+    width: 20%;
+}
+
+.button:hover {
+    cursor: pointer;
+}
+
+.entry:hover {
+    cursor: pointer;
+}
+
+.entry.selected {
+    background-color: #CCF;
+}
+
+#player {
+    width: 95%;
+}
+
+/**/
+    </style>
+</head>
+<body>
+    <div id="controls" class="panel">
+        <div>
+            <input type="text" id="path" class="text" />
+        </div>
+        <div>
+            <svg xmlns="http://www.w3.org/2000/svg" id="prev" class="button" viewBox="0 0 1 1">
+                <polygon points="1.0,0 0.2,0.5 1.0,1" fill="#000000" />
+                <rect width="0.2" height="1" x="0.0" fill="#000000" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" id="play" class="button" viewBox="0 0 1 1">
+                <polygon points="0.1,0 0.9,0.5 0.1,1" fill="#000000" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" id="pause" class="button" viewBox="0 0 1 1">
+                <rect width="0.3" height="1" x="0.1" fill="#000000" />
+                <rect width="0.3" height="1" x="0.6" fill="#000000" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" id="next" class="button" viewBox="0 0 1 1">
+                <polygon points="0.0,0 0.8,0.5 0.0,1" fill="#000000" />
+                <rect width="0.2" height="1" x="0.8" fill="#000000" />
+            </svg>
+        </div>
+        <div id="audio" class="text">
+            <audio id="player" src="" preload="auto" controls="controls"></audio>
+        </div>
+        <div id="info" class="text">
+            
+        </div>
+    </div>
+    
+    <div id="playlist" class="panel">
+        
+    </div>
+</body>
+</html>
